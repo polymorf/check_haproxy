@@ -35,6 +35,7 @@ use Nagios::Plugin ;
 use LWP::UserAgent;			# http client
 use HTTP::Request;			# used by LWP::UserAgent
 use HTTP::Status;			# to get http err msg
+use IO::Socket;				# To use unix Sockets
 
 
 use Data::Dumper;
@@ -87,7 +88,7 @@ $np->add_arg (
 );
 $np->add_arg (
 	spec => 'url|u=s',
-	help => _gt('URL of the HAProxy csv statistics page.'),
+	help => _gt('URL of the HAProxy csv statistics page HTTP or unix Socket.'),
 	required => 1,
 );
 
@@ -117,21 +118,54 @@ $ua->agent(basename($0));
 # Workaround for LWP bug :
 $ua->parse_head(0);
 
-if ( defined($ENV{'http_proxy'}) ) {
-	# Normal http proxy :
-	$ua->proxy(['http'], $ENV{'http_proxy'});
-	# Https must use Crypt::SSLeay https proxy (to use CONNECT method instead of GET)
-	$ENV{'HTTPS_PROXY'} = $ENV{'http_proxy'};
-}
+# For csv data
+my $stats="";
 
-# Build and submit an http request :
-my $request = HTTP::Request->new('GET', $url);
-# Authenticate if username and password are supplied
-if ( defined($username) && defined($password) ) {
-  $request->authorization_basic($username, $password);
-}
 my $timer = time();
-my $http_response = $ua->request( $request );
+if ( $url =~ /^http/ ) {
+	if ( defined($ENV{'http_proxy'}) ) {
+		# Normal http proxy :
+		$ua->proxy(['http'], $ENV{'http_proxy'});
+		# Https must use Crypt::SSLeay https proxy (to use CONNECT method instead of GET)
+		$ENV{'HTTPS_PROXY'} = $ENV{'http_proxy'};
+	}
+	# Build and submit an http request :
+	my $request = HTTP::Request->new('GET', $url);
+	# Authenticate if username and password are supplied
+	if ( defined($username) && defined($password) ) {
+		$request->authorization_basic($username, $password);
+	}
+	my $http_response = $ua->request( $request );
+	
+	if ( $http_response->is_error() ) {
+		my $err = $http_response->code." ".status_message($http_response->code)." (".$http_response->message.")";
+		$np->add_message(CRITICAL, _gt("HTTP error: ").$err );
+	} elsif ( ! $http_response->is_success() ) {
+		my $err = $http_response->code." ".status_message($http_response->code)." (".$http_response->message.")";
+		$np->add_message(CRITICAL, _gt("Internal error: ").$err );
+	}
+	if ( $http_response->is_success() ) {
+		$stats = $http_response->content;
+	}
+
+}elsif ( $url =~ /^\// ) {
+	my $sock = new IO::Socket::UNIX (
+		Peer => "$url",
+		Type => SOCK_STREAM,
+		Timeout => 1);
+	if ( !$sock ) {
+		my $err = "Can't connect to unix socket";
+		$np->add_message(CRITICAL, _gt("Internal error: ").$err );
+	}else{
+	    print $sock "show stat\n";
+	    while(my $line = <$sock>){
+	    	$stats.=$line;
+	    }
+	}
+}else {
+	my $err = "Can't detect socket type";
+	$np->add_message(CRITICAL, _gt("Internal error: ").$err );
+}
 $timer = time()-$timer;
 
 
@@ -158,24 +192,14 @@ if ( $status > OK ) {
 my $message = 'msg';
 
 
-if ( $http_response->is_error() ) {
-	my $err = $http_response->code." ".status_message($http_response->code)." (".$http_response->message.")";
-	$np->add_message(CRITICAL, _gt("HTTP error: ").$err );
-
-} elsif ( ! $http_response->is_success() ) {
-	my $err = $http_response->code." ".status_message($http_response->code)." (".$http_response->message.")";
-	$np->add_message(CRITICAL, _gt("Internal error: ").$err );
-}
 
 
 ($status, $message) = $np->check_messages();
 
-if ( $http_response->is_success() ) {
+if ( $status == OK && $stats ne "") {
 
-	# Get xml content ... 
-	my $stats = $http_response->content;
 	if ($DEBUG) {
-		print "------------------===http output===------------------\n$stats\n-----------------------------------------------------\n";
+		print "------------------===csv output===------------------\n$stats\n-----------------------------------------------------\n";
 		print "t=".$timer."s\n";
 	};
 
@@ -313,9 +337,22 @@ In F<services.cfg> you just have to add something like :
 	  service_description	HAProxy
 	  check_command			check_haproxy!http://haproxy.exemple.org/haproxy?stats;csv
 	}
+	
+	Or:
+	
+	define service {
+	  host_name             haproxy.exemple.org
+	  normal_check_interval 10
+	  retry_check_interval  5
+	  contact_groups        linux-admins
+	  service_description	HAProxy
+	  check_command			check_haproxy!/var/run/my_haproxy.sock
+	}
 
 =head1 AUTHOR
 
 Stéphane Urbanovski <stephane.urbanovski@ac-nancy-metz.fr>
+
+David BERARD <david@nfrance.com>
 
 =cut
