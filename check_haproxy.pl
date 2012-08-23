@@ -56,7 +56,7 @@ textdomain('nagios-plugins-perl');
 my $np = Nagios::Plugin->new(
 	version => $VERSION,
 	blurb => _gt('Plugin to check HAProxy stats url'),
-	usage => "Usage: %s [ -v|--verbose ]  -u <url> [-t <timeout>] [-U <username>] [-P <password>] [ -c|--critical=<threshold> ] [ -w|--warning=<threshold> ]",
+	usage => "Usage: %s [ -v|--verbose ]  -u <url> [-t <timeout>] [-U <username>] [-P <password>] [ -c|--critical=<threshold> ] [ -w|--warning=<threshold> ] [ -b|--critical-backends=<comma separated list>",
 	timeout => $TIMEOUT+1
 );
 $np->add_arg (
@@ -91,6 +91,11 @@ $np->add_arg (
 	help => _gt('URL of the HAProxy csv statistics page HTTP or unix Socket.'),
 	required => 1,
 );
+$np->add_arg (
+	spec => 'critical-backends|b=s',
+	help => _gt('List of critical backend, if set other backend are only warning backend'),
+	required => 0,
+);
 
 
 $np->getopts;
@@ -99,6 +104,11 @@ $DEBUG = $np->opts->get('debug');
 my $verbose = $np->opts->get('verbose');
 my $username = $np->opts->get('username');
 my $password = $np->opts->get('password');
+my $crit_backends = $np->opts->get('critical-backends');
+my @crit_backends_list;
+if ( defined ( $crit_backends ) ) {
+	@crit_backends_list = split(',',$crit_backends);
+}
 
 # Thresholds :
 # time
@@ -246,7 +256,15 @@ if ( $status == OK && $stats ne "") {
 				if ( $stats{$pxname}{$svname}{'status'} eq 'UP' ) {
 					logD( sprintf(_gt("%s '%s' is up on '%s' proxy."),$activeDescr,$svname,$pxname) );
 				} elsif ( $stats{$pxname}{$svname}{'status'} eq 'DOWN' ) {
-					$np->add_message(CRITICAL, sprintf(_gt("%s '%s' is DOWN on '%s' proxy !"),$activeDescr,$svname,$pxname) );
+					if ( defined($crit_backends) ) {
+						if ( grep(/^$pxname$/,@crit_backends_list) ) {
+							$np->add_message(CRITICAL, sprintf(_gt("%s '%s' is DOWN on '%s' proxy !"),$activeDescr,$svname,$pxname) );
+						}else{
+							$np->add_message(WARNING, sprintf(_gt("%s '%s' is DOWN on '%s' proxy !"),$activeDescr,$svname,$pxname) );
+						}
+					}else{
+						$np->add_message(CRITICAL, sprintf(_gt("%s '%s' is DOWN on '%s' proxy !"),$activeDescr,$svname,$pxname) );
+					}
 				}
 				if ( $stats{$pxname}{$svname}{'act'} eq '1' ) {
 					$stats2{$pxname}{'acttot'}++;
