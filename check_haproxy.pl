@@ -65,14 +65,14 @@ $np->add_arg (
 	default => 0,
 );
 $np->add_arg (
-  spec => 'username|U=s',
-  help => _gt('Username for HTTP Auth'),
-  required => 0, 
+	spec => 'username|U=s',
+	help => _gt('Username for HTTP Auth'),
+	required => 0,
 );
 $np->add_arg (
-  spec => 'password|P=s',
-  help => _gt('Password for HTTP Auth'),
-  required => 0, 
+	spec => 'password|P=s',
+	help => _gt('Password for HTTP Auth'),
+	required => 0,
 );
 $np->add_arg (
 	spec => 'w=f',
@@ -146,7 +146,7 @@ if ( $url =~ /^http/ ) {
 		$request->authorization_basic($username, $password);
 	}
 	my $http_response = $ua->request( $request );
-	
+
 	if ( $http_response->is_error() ) {
 		my $err = $http_response->code." ".status_message($http_response->code)." (".$http_response->message.")";
 		$np->add_message(CRITICAL, _gt("HTTP error: ").$err );
@@ -167,10 +167,10 @@ if ( $url =~ /^http/ ) {
 		my $err = "Can't connect to unix socket";
 		$np->add_message(CRITICAL, _gt("Internal error: ").$err );
 	}else{
-	    print $sock "show stat\n";
-	    while(my $line = <$sock>){
-	    	$stats.=$line;
-	    }
+		print $sock "show stat\n";
+		while(my $line = <$sock>){
+			$stats.=$line;
+		}
 	}
 }else {
 	my $err = "Can't detect socket type";
@@ -221,7 +221,7 @@ if ( $status == OK && $stats ne "") {
 	} else {
 		$np->nagios_exit(UNKNOWN, _gt("Can't find csv header !") );
 	}
-	
+
 	my %stats = ();
 	for ( my $y = 1; $y < $#rows; $y++ ) {
 		my @values = split(/\,/,$rows[$y]);
@@ -236,7 +236,7 @@ if ( $status == OK && $stats ne "") {
 			$stats{$values[0]}{$values[1]}{$fields[$x]} = $values[$x];
 		}
 	}
-#  	print Dumper(\%stats);
+#	print Dumper(\%stats);
 	my %stats2 = ();
 	my $okMsg = '';
 	foreach my $pxname ( keys(%stats) ) {
@@ -269,14 +269,14 @@ if ( $status == OK && $stats ne "") {
 				if ( $stats{$pxname}{$svname}{'act'} eq '1' ) {
 					$stats2{$pxname}{'acttot'}++;
 					$stats2{$pxname}{'act'} += $svstatus;
-					
+
 				} elsif ($stats{$pxname}{$svname}{'bck'} eq '1')  {
 					$stats2{$pxname}{'bcktot'}++;
 					$stats2{$pxname}{'bck'} += $svstatus;
 				}
 				$stats2{$pxname}{'scur'} += $stats{$pxname}{$svname}{'scur'};
 				logD( "Current sessions : ".$stats{$pxname}{$svname}{'scur'} );
-				
+
 			} elsif ( $stats{$pxname}{$svname}{'type'} eq '0' ) {
 				$stats2{$pxname}{'slim'} = $stats{$pxname}{$svname}{'slim'};
 			}
@@ -296,21 +296,21 @@ if ( $status == OK && $stats ne "") {
 			);
 		}
 	}
-	
-#  	print Dumper(\%stats2);
+
+#	print Dumper(\%stats2);
 	($status, $message) = $np->check_messages('join' => ' ');
-	
+
 	if ( $status == OK ) {
 		$message = $okMsg;
-	
+
 	}
-	
+
 }
-# 	if ( $verbose ) {
-# 		($status, $message) = $np->check_messages('join' => '<br/>','join_all' => '<br/>');
-# 	} else {
-# 		($status, $message) = $np->check_messages('join' => '<br/>');
-# 	}
+#	if ( $verbose ) {
+#		($status, $message) = $np->check_messages('join' => '<br/>','join_all' => '<br/>');
+#	} else {
+#		($status, $message) = $np->check_messages('join' => '<br/>');
+#	}
 
 
 $np->nagios_exit($status, $message );
